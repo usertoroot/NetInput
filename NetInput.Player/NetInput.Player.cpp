@@ -11,6 +11,22 @@
 
 SOCKET sock;
 PVIGEM_TARGET pads[XUSER_MAX_COUNT];
+PVIGEM_CLIENT client;
+
+void ResetGamepads()
+{
+	for (int i = 0; i < XUSER_MAX_COUNT; i++)
+	{
+		auto pad = pads[i];
+		pads[i] = nullptr;
+
+		if (pad == nullptr)
+			continue;
+
+		vigem_target_remove(client, pad);
+		vigem_target_free(pad);
+	}
+}
 
 int main()
 {
@@ -49,7 +65,7 @@ int main()
 	printf("Done.\n");
 
 	printf("Setting up ViGEmClient...\n");
-	const auto client = vigem_alloc();
+	client = vigem_alloc();
 	if (client == nullptr)
 	{
 		printf("Failed to setup ViGEmClient.\n");
@@ -71,7 +87,7 @@ int main()
 
 	printf("Done.\n");
 
-	printf("Waiting for data, press ESC to exit...\n");
+	printf("Waiting for data...\n");
 
 	struct sockaddr_in clientAddr;
 	uint8_t packet[sizeof(XINPUT_STATE) + 1];
@@ -83,42 +99,40 @@ int main()
 		memset(&clientAddr, 0, sizeof(clientAddr));
 		int addrLen = sizeof(clientAddr);
 		int bytesReceived = recvfrom(sock, (char*)&packet, sizeof(packet), 0, (struct sockaddr*)&clientAddr, &addrLen);
-		if (bytesReceived != sizeof(packet))
-			continue;
 
-		uint32_t i = (uint32_t)packet[0];
-		XINPUT_STATE* state = (XINPUT_STATE*)(packet + 1);
-
-		if (pads[i] == nullptr)
+		if (bytesReceived == 1 && packet[0] == (uint8_t)0xFFu)
 		{
-			auto pad = vigem_target_x360_alloc();
-			const auto targetAddResult = vigem_target_add(client, pad);
-			if (!VIGEM_SUCCESS(targetAddResult))
+			printf("Reset signal received, gamepads will be reset.\n");
+			ResetGamepads();
+		}
+		else if (bytesReceived == sizeof(packet) && packet[0] >= 0 && packet[0] < XUSER_MAX_COUNT)
+		{
+			uint32_t i = (uint32_t)packet[0];
+			XINPUT_STATE* state = (XINPUT_STATE*)(packet + 1);
+
+			if (pads[i] == nullptr)
 			{
-				vigem_target_free(pad);
-				printf("Failed to add pad %u with error code 0x%08X.\n", i, targetAddResult);
-				return -6;
+				auto pad = vigem_target_x360_alloc();
+				const auto targetAddResult = vigem_target_add(client, pad);
+				if (VIGEM_SUCCESS(targetAddResult))
+				{
+					printf("Connected new gamepad %u.\n", i);
+					pads[i] = pad;
+				}
+				else
+				{
+					vigem_target_free(pad);
+					printf("Failed to add pad %u with error code 0x%08X.\n", i, targetAddResult);
+				}
 			}
 
-			printf("Connected new gamepad %u.\n", i);
-			pads[i] = pad;
+			auto pad = pads[i];
+			if (pad != nullptr)
+				vigem_target_x360_update(client, pad, *reinterpret_cast<XUSB_REPORT*>(&state->Gamepad));
 		}
-
-		auto pad = pads[i];
-		if (pad != nullptr)
-			vigem_target_x360_update(client, pad, *reinterpret_cast<XUSB_REPORT*>(&state->Gamepad));
 	}
 
-	for (int i = 0; i < XUSER_MAX_COUNT; i++)
-	{
-		auto pad = pads[i];
-		if (pad == nullptr)
-			continue;
-
-		vigem_target_remove(client, pad);
-		vigem_target_free(pad);
-	}
-
+	ResetGamepads();
 	vigem_disconnect(client);
 	vigem_free(client);
 	closesocket(sock);

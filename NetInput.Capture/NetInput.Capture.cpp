@@ -17,6 +17,13 @@ SOCKET sock;
 struct sockaddr_in addr;
 XINPUT_STATE lastSentInputStates[XUSER_MAX_COUNT];
 
+void SendResetControllers()
+{
+	uint8_t packet[] = { 0xFFu };
+	if (sendto(sock, (const char*)&packet, sizeof(packet), 0, (struct sockaddr*)&addr, sizeof(addr)) != sizeof(packet))
+		printf("Failed to send reset message.\n");
+}
+
 void PollControllers() 
 {
 	XINPUT_STATE state;
@@ -94,6 +101,10 @@ int main()
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(4313);
 
+	printf("Sending reset...\n");
+	SendResetControllers();
+	printf("Done.\n");
+
 	printf("Waiting for gamepad input, press ESC to exit...\n");
 	memset(lastSentInputStates, 0, sizeof(lastSentInputStates));
 	while (true)
@@ -105,6 +116,7 @@ int main()
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 
+	SendResetControllers();
 	closesocket(sock);
 	WSACleanup();
 	CoUninitialize();
