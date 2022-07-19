@@ -8,6 +8,9 @@
 
 #include <iostream>
 #include <stdint.h>
+#include <fstream>
+#include <string>
+
 
 SOCKET sock;
 PVIGEM_TARGET pads[XUSER_MAX_COUNT];
@@ -30,10 +33,45 @@ void ResetGamepads()
 
 int main()
 {
+	int port = 4313;
+
 	CoInitialize(NULL);
 
 	printf("Starting networking...\n");
 
+
+	std::ifstream input_file("target.txt");
+	if (input_file.is_open())
+	{
+		printf("Reading Port from target.txt.\n");
+		std::string line;
+
+		int index = 0;
+		while (!input_file.eof()) {
+			getline(input_file, line);
+
+			switch (index)
+			{
+			case 1:
+				try
+				{
+					port = std::stoi(line);
+					if (port <= 0)
+						port = 4313;
+				}
+				catch (...)
+				{
+					std::cout << line << " is not a valid Port number, using default value(4313) correct target.txt if your intent was to use another Port number\n";
+					port = 4313;
+				}
+				break;
+			default:
+				break;
+			}
+
+			index++;
+		}
+	}
 	WSADATA wsaData;
 	int wsaStartupResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	if (wsaStartupResult != 0)
@@ -51,12 +89,12 @@ int main()
 
 	struct sockaddr_in addr;
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(4313);
+	addr.sin_port = htons(port);
 	inet_pton(AF_INET, "0.0.0.0", &(addr.sin_addr));
 
 	if (bind(sock, (const sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR)
 	{
-		printf("Failed to bind to 0.0.0.0:4313.");
+		printf("Failed to bind to 0.0.0.0:%d.", port);
 		closesocket(sock);
 		WSACleanup();
 		return -3;

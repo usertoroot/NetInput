@@ -13,7 +13,7 @@ For example:
 ## Local Setup Guide
 
 1. Install the requirements
-2. Run the Player on the computer you would like to send the gamepad input to
+2. Run the Player on the computer you would like to send the gamepad input to, if you want a custom Port number, create the "target.txt" and define the port in the second line
 3. Figure out the IP address of the computer running the player (open up terminal and type ipconfig)
 4. Create a file called target.txt in the same folder as the Capture program on the computer you would like to capture the gamepad input from and insert add the IP of the computer running the Player in that file and the Port number
 5. Run the Capture program on the computer you would like to game the gamepad input from
@@ -22,7 +22,7 @@ For example:
 ## Over The Internet Setup Guide
 
 1. Install the requirements
-2. Run the Player on the computer you would like to send the gamepad input to
+2. Run the Player on the computer you would like to send the gamepad input to, if you want a custom Port number, create the "target.txt" and define the port in the second line
 3. Figure out the remote IP address of the computer running the player (https://www.whatismyip.com/) and forward the required port (UDP default:4313) on your router
 4. Create a file called target.txt in the same folder as the Capture program on the computer you would like to capture the gamepad input from and insert add the IP of the computer running the Player in that file and the Port number
 5. Run the Capture program on the computer you would like to game the gamepad input from
