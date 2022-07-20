@@ -87,6 +87,7 @@ int main()
 		return -2;
 	}
 
+	printf("Port is %d.\n", port);
 	struct sockaddr_in addr;
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(port);
