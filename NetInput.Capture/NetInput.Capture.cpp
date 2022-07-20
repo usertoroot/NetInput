@@ -24,7 +24,7 @@ void SendResetControllers()
 		printf("Failed to send reset message.\n");
 }
 
-void PollControllers() 
+void PollControllers()
 {
 	XINPUT_STATE state;
 	for (uint32_t i = 0u; i < XUSER_MAX_COUNT; i++)
@@ -49,17 +49,47 @@ void PollControllers()
 int main()
 {
 	std::string ip;
+	std::int16_t port = 4313;
 
 	std::ifstream input_file("target.txt");
 	if (input_file.is_open())
 	{
 		printf("Reading ip from target.txt.\n");
-		ip = std::string((std::istreambuf_iterator<char>(input_file)), std::istreambuf_iterator<char>());
+		std::string line;
 
-		if (inet_pton(AF_INET, ip.c_str(), &(addr.sin_addr)) != 1)
-		{
-			std::cout << ip << " is not a valid ip, please correct target.txt\n";
-			return -1;
+		int index = 0;
+		while (!input_file.eof()) {
+			getline(input_file, line);
+
+			switch (index)
+			{
+			case 0:
+				if (inet_pton(AF_INET, line.c_str(), &(addr.sin_addr)) != 1)
+				{
+					std::cout << line << " is not a valid ip, please correct target.txt\n";
+					return -1;
+				}
+
+				ip = line;
+				break;
+			case 1:
+				try
+				{
+					port = std::stoi(line);
+					if (port <= 0)
+						port = 4313;
+				}
+				catch (...)
+				{
+					std::cout << line << " is not a valid Port number, using default value(4313) correct target.txt if your intent was to use another Port number\n";
+					port = 4313;
+				}
+				break;
+			default:
+				break;
+			}
+
+			index++;
 		}
 	}
 
@@ -69,7 +99,7 @@ int main()
 		{
 			printf("Please enter the IP of the target computer.\n");
 
-			std::cin >> ip;			
+			std::cin >> ip;
 			if (inet_pton(AF_INET, ip.c_str(), &(addr.sin_addr)) == 1)
 				break;
 
@@ -85,7 +115,7 @@ int main()
 
 	WSADATA wsaData;
 	int wsaStartupResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-	if (wsaStartupResult != 0) 
+	if (wsaStartupResult != 0)
 	{
 		printf("WSAStartup failed with error code 0x%08X.\n", wsaStartupResult);
 		return -2;
@@ -98,8 +128,9 @@ int main()
 		return -3;
 	}
 
+	printf("Port is %d.\n", port);
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(4313);
+	addr.sin_port = htons(port);
 
 	printf("Sending reset...\n");
 	SendResetControllers();
