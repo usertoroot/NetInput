@@ -8,6 +8,9 @@
 
 #include <iostream>
 #include <stdint.h>
+#include <string>
+#include <stdint.h>
+#include <fstream>
 
 SOCKET sock;
 PVIGEM_TARGET pads[XUSER_MAX_COUNT];
@@ -49,17 +52,44 @@ int main()
 		return -2;
 	}
 
+	//Read target port from file
+	int targetPort = 4313;
+	std::ifstream input_file("port.txt");
+	if (input_file.is_open()) {
+		printf("Reading port from port.txt\n");
+		std::string line;
+		getline(input_file, line);
+		try
+		{
+			targetPort = std::stoi(line);
+			if (targetPort <= 0)
+				targetPort = 4313;
+		}
+		catch (...)
+		{
+			std::cout << line << " is not a valid Port number, using default value(4313) correct port.txt if your intent was to use another Port number\n";
+			targetPort = 4313;
+		}
+	}
+
+	//Bind socket to port.
 	struct sockaddr_in addr;
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(4313);
+	addr.sin_port = htons(targetPort);
 	inet_pton(AF_INET, "0.0.0.0", &(addr.sin_addr));
 
-	if (bind(sock, (const sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR)
+	int bindResult = bind(sock, (const sockaddr*)&addr, sizeof(addr));
+
+	if (bindResult == SOCKET_ERROR)
 	{
-		printf("Failed to bind to 0.0.0.0:4313.");
+		printf("Failed to bind to 0.0.0.0:%d\n", targetPort);
 		closesocket(sock);
 		WSACleanup();
 		return -3;
+	}
+	else
+	{
+		printf("Binded to 0.0.0.0:%d\n", targetPort);
 	}
 
 	printf("Done.\n");
@@ -86,6 +116,8 @@ int main()
 	}
 
 	printf("Done.\n");
+
+	printf("Press ESC to exit at any moment...\n");
 
 	printf("Waiting for data...\n");
 
@@ -135,7 +167,7 @@ int main()
 	ResetGamepads();
 	vigem_disconnect(client);
 	vigem_free(client);
-	closesocket(sock);
+	int closeSockedResult = closesocket(sock);
 	WSACleanup();
 	CoUninitialize();
 	return 0;
