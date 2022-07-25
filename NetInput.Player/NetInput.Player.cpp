@@ -8,9 +8,9 @@
 
 #include <iostream>
 #include <stdint.h>
-#include <fstream>
 #include <string>
-
+#include <stdint.h>
+#include <fstream>
 
 SOCKET sock;
 PVIGEM_TARGET pads[XUSER_MAX_COUNT];
@@ -33,45 +33,10 @@ void ResetGamepads()
 
 int main()
 {
-	int port = 4313;
-
 	CoInitialize(NULL);
 
 	printf("Starting networking...\n");
 
-
-	std::ifstream input_file("target.txt");
-	if (input_file.is_open())
-	{
-		printf("Reading Port from target.txt.\n");
-		std::string line;
-
-		int index = 0;
-		while (!input_file.eof()) {
-			getline(input_file, line);
-
-			switch (index)
-			{
-			case 1:
-				try
-				{
-					port = std::stoi(line);
-					if (port <= 0)
-						port = 4313;
-				}
-				catch (...)
-				{
-					std::cout << line << " is not a valid Port number, using default value(4313) correct target.txt if your intent was to use another Port number\n";
-					port = 4313;
-				}
-				break;
-			default:
-				break;
-			}
-
-			index++;
-		}
-	}
 	WSADATA wsaData;
 	int wsaStartupResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	if (wsaStartupResult != 0)
@@ -87,18 +52,44 @@ int main()
 		return -2;
 	}
 
-	printf("Port is %d.\n", port);
+	//Read target port from file
+	int targetPort = 4313;
+	std::ifstream input_file("port.txt");
+	if (input_file.is_open()) {
+		printf("Reading port from port.txt\n");
+		std::string line;
+		getline(input_file, line);
+		try
+		{
+			targetPort = std::stoi(line);
+			if (targetPort <= 0)
+				targetPort = 4313;
+		}
+		catch (...)
+		{
+			std::cout << line << " is not a valid Port number, using default value(4313) correct port.txt if your intent was to use another Port number\n";
+			targetPort = 4313;
+		}
+	}
+
+	//Bind socket to port.
 	struct sockaddr_in addr;
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(port);
+	addr.sin_port = htons(targetPort);
 	inet_pton(AF_INET, "0.0.0.0", &(addr.sin_addr));
 
-	if (bind(sock, (const sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR)
+	int bindResult = bind(sock, (const sockaddr*)&addr, sizeof(addr));
+
+	if (bindResult == SOCKET_ERROR)
 	{
-		printf("Failed to bind to 0.0.0.0:%d.", port);
+		printf("Failed to bind to 0.0.0.0:%d\n", targetPort);
 		closesocket(sock);
 		WSACleanup();
 		return -3;
+	}
+	else
+	{
+		printf("Binded to 0.0.0.0:%d\n", targetPort);
 	}
 
 	printf("Done.\n");
@@ -125,6 +116,8 @@ int main()
 	}
 
 	printf("Done.\n");
+
+	printf("Press ESC to exit at any moment...\n");
 
 	printf("Waiting for data...\n");
 
@@ -174,7 +167,7 @@ int main()
 	ResetGamepads();
 	vigem_disconnect(client);
 	vigem_free(client);
-	closesocket(sock);
+	int closeSockedResult = closesocket(sock);
 	WSACleanup();
 	CoUninitialize();
 	return 0;
