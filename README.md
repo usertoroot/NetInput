@@ -36,3 +36,22 @@ The Player will see if a gamepad with that index is connected. If not, a new vir
 ## Requirements
 
 - ViGEmBus https://github.com/ViGEm/ViGEmBus/releases
+
+# Thank  usertoroot 
+# 1.12 By QeeAI
+
+2023.1.31 
+
+1. Server :  netinput.paly.exe 0-65536 (Default 4313)
+2. Client :  netinput.capture.exe 192.168.1.31 (for example) 0-65536 (Default 4313) ,  "target.txt" never use .
+3. Support Xbox360/One/XSS Vibration 
+4. Pads re-Arrays depended By ClientIP and Local XboxId。
+
+2023年1月31日
+1. 服务端 增加自定义端口 netinput.paly.exe 4313（0-65536）
+2.  客户端  增加自定义IP和端口，取消target.txt的参数文件，  netinput.capture.exe 192.168.1.31（自定义）  4313（0-65536）
+3. 现在可以完美支持XBOX手柄震动。
+4. 服务端的手柄分组ID现在按IP和本地XBOXID共同决定。
+
+
+

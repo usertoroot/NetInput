@@ -9,28 +9,123 @@
 #include <iostream>
 #include <stdint.h>
 
+typedef struct _TARGET_PADS
+{
+	uint8_t                            Pid;
+	PVIGEM_TARGET                      Pad;
+	SOCKADDR_IN                        Addr;
+} TARGET_PADS, * PTARGET_PADS;
+
+#define PAD_OUT_SIZE 5
+#define PAD_ONLINE 0x00
+#define PAD_VIBRA 0x01
+
 SOCKET sock;
-PVIGEM_TARGET pads[XUSER_MAX_COUNT];
+TARGET_PADS pads[XUSER_MAX_COUNT];
 PVIGEM_CLIENT client;
+
+VOID CALLBACK gamepad_callback(PVIGEM_CLIENT Client, PVIGEM_TARGET Target, UCHAR LargeMotor, UCHAR SmallMotor, UCHAR LedNumber, LPVOID UserData) {
+	for (int i = 0; i < XUSER_MAX_COUNT; i++)
+	{
+		if (Target == pads[i].Pad){				
+
+			char packet[PAD_OUT_SIZE];
+			packet[0] = PAD_VIBRA; 
+			packet[1] = pads[i].Pid;
+			
+			packet[2] = LargeMotor;
+			packet[3] = SmallMotor;
+			packet[4] = LedNumber;
+
+     		if (sendto(sock, (const char*)&packet, sizeof(packet), 0, (struct sockaddr*)&pads[i].Addr, sizeof(pads[i].Addr)) != sizeof(packet))
+			     printf("Failed to Send Notify message \n");
+			break;
+
+		}
+	}
+}
+
+
+void SetGamepadOnline(SOCKADDR_IN ClientAddr, uint8_t Pid, uint8_t Pindex) {
+
+	char packet[PAD_OUT_SIZE];
+
+	packet[0] = PAD_ONLINE;
+	packet[1] = Pid;
+	packet[2] = 0;
+	packet[3] = 0;
+	packet[4] = Pindex;
+	
+	if (sendto(sock, (const char*)&packet, sizeof(packet), 0, (struct sockaddr*)&ClientAddr, sizeof(ClientAddr)) != sizeof(packet))
+		printf("Failed to Send Online message \n");
+}
+
+
+
+
+
+
+
+int GetPadIndex(uint8_t pid, SOCKADDR_IN ClientAddr)
+{
+	int index = -1;
+	for (int i = 0; i < XUSER_MAX_COUNT; i++)
+	{
+		if (pads[i].Pad == nullptr && index < 0 )
+		{
+			index = i;
+
+		}else if ( pads[i].Pid == pid  && pads[i].Addr.sin_addr.S_un.S_addr == ClientAddr.sin_addr.S_un.S_addr)
+		{
+			index = i;
+			break;
+		}
+	}
+	return index;
+}
+
+void ResetGamepad(SOCKADDR_IN ClientAddr)
+{
+	for (int i = 0; i < XUSER_MAX_COUNT; i++)
+	{
+		if (pads[i].Pad == nullptr)
+			continue; 
+
+		if (pads[i].Addr.sin_addr.S_un.S_addr == ClientAddr.sin_addr.S_un.S_addr)
+		{			
+		    auto pad = pads[i].Pad;
+			pads[i].Pad = nullptr;
+			vigem_target_remove(client, pad);
+			vigem_target_x360_unregister_notification(pad);
+			vigem_target_free(pad);
+		}	
+	}
+}
 
 void ResetGamepads()
 {
 	for (int i = 0; i < XUSER_MAX_COUNT; i++)
 	{
-		auto pad = pads[i];
-		pads[i] = nullptr;
-
-		if (pad == nullptr)
+		if (pads[i].Pad == nullptr)
 			continue;
-
-		vigem_target_remove(client, pad);
-		vigem_target_free(pad);
+			auto pad = pads[i].Pad;
+			pads[i].Pad = nullptr;
+			vigem_target_remove(client, pad);
+			vigem_target_x360_unregister_notification(pad);
+			vigem_target_free(pad);
 	}
 }
 
-int main()
+
+int main(int argc, char* argv[])
 {
-	CoInitialize(NULL);
+	int port = 4313;
+
+	if (argc > 1) {
+		sscanf_s(argv[1], "%d", &port);
+	}
+	
+    CoInitialize(NULL);
 
 	printf("Starting networking...\n");
 
@@ -51,18 +146,18 @@ int main()
 
 	struct sockaddr_in addr;
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(4313);
+	addr.sin_port = htons(port);
 	inet_pton(AF_INET, "0.0.0.0", &(addr.sin_addr));
 
 	if (bind(sock, (const sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR)
 	{
-		printf("Failed to bind to 0.0.0.0:4313.");
+		printf("Failed to bind to 0.0.0.0:%d.", port);
 		closesocket(sock);
 		WSACleanup();
 		return -3;
 	}
 
-	printf("Done.\n");
+	printf("Bind to 0.0.0.0:%d .\n",port);
 
 	printf("Setting up ViGEmClient...\n");
 	client = vigem_alloc();
@@ -89,46 +184,68 @@ int main()
 
 	printf("Waiting for data...\n");
 
-	struct sockaddr_in clientAddr;
 	uint8_t packet[sizeof(XINPUT_STATE) + 1];
+	struct sockaddr_in clientAddr;
+
 	while (true)
 	{
 		if (GetKeyState(VK_ESCAPE) & 0x8000)
 			break;
 
 		memset(&clientAddr, 0, sizeof(clientAddr));
-		int addrLen = sizeof(clientAddr);
-		int bytesReceived = recvfrom(sock, (char*)&packet, sizeof(packet), 0, (struct sockaddr*)&clientAddr, &addrLen);
+		int addr_len = sizeof(clientAddr);
+		int bytesReceived = recvfrom(sock, (char*)&packet, sizeof(packet), 0, (struct sockaddr*)&clientAddr, &addr_len);
 
 		if (bytesReceived == 1 && packet[0] == (uint8_t)0xFFu)
 		{
-			printf("Reset signal received, gamepads will be reset.\n");
-			ResetGamepads();
+			printf("Reset signal received, controllers will be reset.\n");
+			ResetGamepad(clientAddr);
 		}
 		else if (bytesReceived == sizeof(packet) && packet[0] >= 0 && packet[0] < XUSER_MAX_COUNT)
 		{
-			uint32_t i = (uint32_t)packet[0];
+			uint8_t pindex = GetPadIndex((uint8_t)packet[0], clientAddr);
 			XINPUT_STATE* state = (XINPUT_STATE*)(packet + 1);
 
-			if (pads[i] == nullptr)
+			if (pindex >= 0 && pindex < XUSER_MAX_COUNT)
 			{
-				auto pad = vigem_target_x360_alloc();
-				const auto targetAddResult = vigem_target_add(client, pad);
-				if (VIGEM_SUCCESS(targetAddResult))
-				{
-					printf("Connected new gamepad %u.\n", i);
-					pads[i] = pad;
-				}
-				else
-				{
-					vigem_target_free(pad);
-					printf("Failed to add pad %u with error code 0x%08X.\n", i, targetAddResult);
-				}
-			}
+				if (pads[pindex].Pad == nullptr) {
+					auto pad = vigem_target_x360_alloc();
+					const auto targetAddResult = vigem_target_add(client, pad);
+					if (VIGEM_SUCCESS(targetAddResult))
+					{
+						printf("Connected new controller %u.\n", pindex);
 
-			auto pad = pads[i];
-			if (pad != nullptr)
-				vigem_target_x360_update(client, pad, *reinterpret_cast<XUSB_REPORT*>(&state->Gamepad));
+						pads[pindex].Pad = pad;
+						pads[pindex].Addr = clientAddr;
+						pads[pindex].Pid = (uint8_t)packet[0];
+
+						SetGamepadOnline(clientAddr, (uint8_t)packet[0], pindex);
+
+						const auto retval = vigem_target_x360_register_notification(client, pad, &gamepad_callback, nullptr);
+
+						if (VIGEM_SUCCESS(retval))
+						{
+							printf("Register for notification Success! \n");
+
+						}
+						else {
+							printf("Register for notification failed! \n");
+							vigem_target_x360_unregister_notification(pad);
+						}
+
+					}
+					else
+					{
+						vigem_target_free(pad);
+						printf("Failed to add pad %u with error code 0x%08X.\n", pindex, targetAddResult);
+					}
+				}
+
+				if (pads[pindex].Pad!= nullptr) {
+					vigem_target_x360_update(client, pads[pindex].Pad, *reinterpret_cast<XUSB_REPORT*>(&state->Gamepad));
+				}
+
+			}
 		}
 	}
 
