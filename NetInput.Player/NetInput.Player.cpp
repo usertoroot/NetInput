@@ -5,7 +5,8 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <objbase.h>
-
+#include <thread>
+#include <chrono>
 #include <iostream>
 #include <stdint.h>
 
@@ -14,6 +15,7 @@ typedef struct _TARGET_PADS
 	uint8_t                            Pid;
 	PVIGEM_TARGET                      Pad;
 	SOCKADDR_IN                        Addr;
+	time_t                             Utime;
 } TARGET_PADS, * PTARGET_PADS;
 
 #define PAD_OUT_SIZE 5
@@ -36,7 +38,6 @@ VOID CALLBACK gamepad_callback(PVIGEM_CLIENT Client, PVIGEM_TARGET Target, UCHAR
 			packet[2] = LargeMotor;
 			packet[3] = SmallMotor;
 			packet[4] = LedNumber;
-
      		if (sendto(sock, (const char*)&packet, sizeof(packet), 0, (struct sockaddr*)&pads[i].Addr, sizeof(pads[i].Addr)) != sizeof(packet))
 			     printf("Failed to Send Notify message \n");
 			break;
@@ -45,6 +46,28 @@ VOID CALLBACK gamepad_callback(PVIGEM_CLIENT Client, PVIGEM_TARGET Target, UCHAR
 	}
 }
 
+void CheckPadUpdateTimeOut() {
+
+   while (true)
+   {
+		for (int i = 0; i < XUSER_MAX_COUNT; i++)
+		{
+			if (pads[i].Pad == nullptr)
+				continue;
+
+			if (time(NULL) - pads[i].Utime >= 15)
+			{
+				auto pad = pads[i].Pad;
+				pads[i].Pad = nullptr;
+				vigem_target_remove(client, pad);
+				vigem_target_x360_unregister_notification(pad);
+				vigem_target_free(pad);
+			}
+		}
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+   }
+}
 
 void SetGamepadOnline(SOCKADDR_IN ClientAddr, uint8_t Pid, uint8_t Pindex) {
 
@@ -55,18 +78,13 @@ void SetGamepadOnline(SOCKADDR_IN ClientAddr, uint8_t Pid, uint8_t Pindex) {
 	packet[2] = 0;
 	packet[3] = 0;
 	packet[4] = Pindex;
-	
+
 	if (sendto(sock, (const char*)&packet, sizeof(packet), 0, (struct sockaddr*)&ClientAddr, sizeof(ClientAddr)) != sizeof(packet))
 		printf("Failed to Send Online message \n");
 }
 
 
-
-
-
-
-
-int GetPadIndex(uint8_t pid, SOCKADDR_IN ClientAddr)
+int GetNewPadIndex(uint8_t pid, SOCKADDR_IN ClientAddr)
 {
 	int index = -1;
 	for (int i = 0; i < XUSER_MAX_COUNT; i++)
@@ -75,7 +93,25 @@ int GetPadIndex(uint8_t pid, SOCKADDR_IN ClientAddr)
 		{
 			index = i;
 
-		}else if ( pads[i].Pid == pid  && pads[i].Addr.sin_addr.S_un.S_addr == ClientAddr.sin_addr.S_un.S_addr)
+		}else if ( pads[i].Pid == pid  && pads[i].Addr.sin_addr.S_un.S_addr == ClientAddr.sin_addr.S_un.S_addr && pads[i].Addr.sin_port == ClientAddr.sin_port)
+		{
+			index = i;
+			break;
+		}
+	}
+	return index;
+}
+
+
+int CheckPadIndex(uint8_t pid, SOCKADDR_IN ClientAddr)
+{
+	int index = -1;
+	for (int i = 0; i < XUSER_MAX_COUNT; i++)
+	{
+		if (pads[i].Pad == nullptr)
+			continue; 
+		
+		if (pads[i].Pid == pid && pads[i].Addr.sin_addr.S_un.S_addr == ClientAddr.sin_addr.S_un.S_addr && pads[i].Addr.sin_port == ClientAddr.sin_port)
 		{
 			index = i;
 			break;
@@ -91,7 +127,7 @@ void ResetGamepad(SOCKADDR_IN ClientAddr)
 		if (pads[i].Pad == nullptr)
 			continue; 
 
-		if (pads[i].Addr.sin_addr.S_un.S_addr == ClientAddr.sin_addr.S_un.S_addr)
+		if (pads[i].Addr.sin_addr.S_un.S_addr == ClientAddr.sin_addr.S_un.S_addr && pads[i].Addr.sin_port== ClientAddr.sin_port)
 		{			
 		    auto pad = pads[i].Pad;
 			pads[i].Pad = nullptr;
@@ -181,31 +217,27 @@ int main(int argc, char* argv[])
 	}
 
 	printf("Done.\n");
-
 	printf("Waiting for data...\n");
+
+
+	std::thread checktimeout(CheckPadUpdateTimeOut);
 
 	uint8_t packet[sizeof(XINPUT_STATE) + 1];
 	struct sockaddr_in clientAddr;
 
 	while (true)
 	{
-		if (GetKeyState(VK_ESCAPE) & 0x8000)
-			break;
-
 		memset(&clientAddr, 0, sizeof(clientAddr));
-		int addr_len = sizeof(clientAddr);
+		int addr_len = sizeof(clientAddr);	
 		int bytesReceived = recvfrom(sock, (char*)&packet, sizeof(packet), 0, (struct sockaddr*)&clientAddr, &addr_len);
 
 		if (bytesReceived == 1 && packet[0] == (uint8_t)0xFFu)
 		{
 			printf("Reset signal received, controllers will be reset.\n");
 			ResetGamepad(clientAddr);
-		}
-		else if (bytesReceived == sizeof(packet) && packet[0] >= 0 && packet[0] < XUSER_MAX_COUNT)
+		}else if (bytesReceived == 2 && packet[0] == (uint8_t)0xFEu)
 		{
-			uint8_t pindex = GetPadIndex((uint8_t)packet[0], clientAddr);
-			XINPUT_STATE* state = (XINPUT_STATE*)(packet + 1);
-
+			uint8_t pindex = GetNewPadIndex((uint8_t)packet[1], clientAddr);
 			if (pindex >= 0 && pindex < XUSER_MAX_COUNT)
 			{
 				if (pads[pindex].Pad == nullptr) {
@@ -217,9 +249,10 @@ int main(int argc, char* argv[])
 
 						pads[pindex].Pad = pad;
 						pads[pindex].Addr = clientAddr;
-						pads[pindex].Pid = (uint8_t)packet[0];
+						pads[pindex].Pid = (uint8_t)packet[1];
+						pads[pindex].Utime = time(NULL);
 
-						SetGamepadOnline(clientAddr, (uint8_t)packet[0], pindex);
+						SetGamepadOnline(clientAddr, (uint8_t)packet[1], pindex);
 
 						const auto retval = vigem_target_x360_register_notification(client, pad, &gamepad_callback, nullptr);
 
@@ -241,10 +274,18 @@ int main(int argc, char* argv[])
 					}
 				}
 
-				if (pads[pindex].Pad!= nullptr) {
-					vigem_target_x360_update(client, pads[pindex].Pad, *reinterpret_cast<XUSB_REPORT*>(&state->Gamepad));
-				}
-
+				if (pads[pindex].Pad != nullptr)
+					pads[pindex].Utime = time(NULL);
+			}
+		}
+		else if (bytesReceived == sizeof(packet) && packet[0] >= 0 && packet[0] < XUSER_MAX_COUNT)
+		{
+			uint8_t pindex = CheckPadIndex((uint8_t)packet[0], clientAddr);
+			XINPUT_STATE* state = (XINPUT_STATE*)(packet + 1);
+			if (pindex >= 0 && pindex < XUSER_MAX_COUNT && pads[pindex].Pad != nullptr)
+			{			
+					pads[pindex].Utime = time(NULL);
+					vigem_target_x360_update(client, pads[pindex].Pad, *reinterpret_cast<XUSB_REPORT*>(&state->Gamepad));					
 			}
 		}
 	}

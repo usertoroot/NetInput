@@ -13,7 +13,6 @@
 #include <stdint.h>
 #include <fstream>
 
-
 #define PAD_OUT_SIZE 5
 #define PAD_ONLINE 0x00
 #define PAD_VIBRA 0x01
@@ -21,17 +20,16 @@
 SOCKET sock;
 struct sockaddr_in addr;
 XINPUT_STATE lastSentInputStates[XUSER_MAX_COUNT];
+time_t updatetime[XUSER_MAX_COUNT];
 
 void CheckControllerMessage()
-{ 
+{ 	
 	while (true)
-	{
-		if (GetKeyState(VK_ESCAPE) & 0x8000)
-			break;
-		
+	{		
 		char packet[PAD_OUT_SIZE];
 		int addr_size = sizeof(addr);
-		int bytesReceived = recvfrom(sock, (char*)&packet, sizeof(packet), 0, (struct sockaddr*)&addr, &addr_size);		
+		int bytesReceived = recvfrom(sock, (char*)&packet, sizeof(packet), 0, (struct sockaddr*)&addr, &addr_size);	
+
 		if (bytesReceived == PAD_OUT_SIZE){	
 			uint8_t i = (uint8_t)packet[1];
 			if ((i >= 0) && (i < XUSER_MAX_COUNT)) {
@@ -77,10 +75,18 @@ void PollControllers()
 	{
 		memset(&state, 0, sizeof(XINPUT_STATE));
 		if (XInputGetState(i, &state) != ERROR_SUCCESS)
-			continue;
+			continue;		
+
+		if (time(NULL) - updatetime[i] >= 5)
+		{
+			uint8_t packet[] = { 0xFEu ,i };
+			if (sendto(sock, (const char*)&packet, sizeof(packet), 0, (struct sockaddr*)&addr, sizeof(addr)) != sizeof(packet))
+				printf("Failed to CheckUpdateTimeOut!\n");
+			updatetime[i] = time(NULL);
+		}
 
 		if (memcmp(lastSentInputStates + i, &state, sizeof(XINPUT_STATE)) == 0)
-			continue;
+		  continue;		
 
 		uint8_t packet[sizeof(XINPUT_STATE) + 1];
 		packet[0] = (uint8_t)i;
@@ -152,18 +158,17 @@ int main(int argc, char* argv[])
 	printf("Sending reset...\n");
 	SendResetControllers();
 	printf("Done.\n");
-	printf("Waiting for gamepad input, press ESC to exit...\n");
-	
-	std::thread message(CheckControllerMessage); // new thread for vibra notify
+	printf("Waiting for gamepad input, press Ctrl+C to exit...\n");
+
+	std::thread message(CheckControllerMessage); // new thread for message
 
 	memset(lastSentInputStates, 0, sizeof(lastSentInputStates));
 	while (true)
 	{
-		if (GetKeyState(VK_ESCAPE) & 0x8000)
-			break;
 		PollControllers();
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
+
 	printf("Wait For Closing...\n");
 	SendResetControllers();
 	closesocket(sock);
