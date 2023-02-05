@@ -34,6 +34,15 @@ SOCKET sock;
 TARGET_PADS pads[XUSER_MAX_COUNT];
 PVIGEM_CLIENT client;
 
+bool checkvalidmac(uint8_t hMac[])
+{
+		for (int i = 0; i < MAC_SIZE; i++) {
+			if (hMac[i] > uint8_t(0x00u) && hMac[i] < uint8_t(0xFFu))
+				return true;
+		}
+	return false;
+}
+
 VOID CALLBACK gamepad_callback(PVIGEM_CLIENT Client, PVIGEM_TARGET Target, UCHAR LargeMotor, UCHAR SmallMotor, UCHAR LedNumber, LPVOID UserData) {
 	for (int i = 0; i < XUSER_MAX_COUNT; i++)
 	{
@@ -260,17 +269,17 @@ int main(int argc, char* argv[])
 		{
 			printf("Reset signal received, controllers will be reset.\n");
 			uint8_t hMac[MAC_SIZE];
-			memcpy(hMac, packet + 1, sizeof(hMac));			
+			memcpy(hMac, packet + 1, MAC_SIZE);
 			ResetGamepad(clientAddr, hMac);
 
 		}else if (bytesReceived > 2 && packet[0] == (uint8_t)PAD_REG)
 		{
 			uint8_t hMac[MAC_SIZE];
 			uint8_t Pid = (uint8_t)packet[1];
-			memcpy(hMac, packet+2, sizeof(hMac));
+			memcpy(hMac, packet+2, MAC_SIZE);
 			uint8_t pindex = GetNewPadIndex(Pid, clientAddr,hMac);
 
-			if (pindex >= 0 && pindex < XUSER_MAX_COUNT)
+			if (pindex >= 0 && pindex < XUSER_MAX_COUNT && checkvalidmac(hMac))
 			{
 				if (pads[pindex].Pad == nullptr) {
 					auto pad = vigem_target_x360_alloc();
@@ -283,7 +292,7 @@ int main(int argc, char* argv[])
 						pads[pindex].Addr = clientAddr;
 						pads[pindex].Pid = Pid;
 						pads[pindex].Utime = time(NULL);
-						memcpy(pads[pindex].hMac,&hMac, sizeof(hMac));
+						memcpy(pads[pindex].hMac,&hMac, MAC_SIZE);
 
 						SetGamepadOnline(clientAddr,Pid, pindex);
 
@@ -315,10 +324,10 @@ int main(int argc, char* argv[])
 		{
 			uint8_t hMac[MAC_SIZE];
 			uint8_t Pid = (uint8_t)packet[1];
-			memcpy(hMac, packet + 2, sizeof(hMac));
+			memcpy(hMac, packet + 2, MAC_SIZE);
 			uint8_t pindex = CheckPadIndex(Pid, clientAddr, hMac);
 			XINPUT_STATE* state = (XINPUT_STATE*)(packet + MAC_SIZE + 2);
-			if (pindex >= 0 && pindex < XUSER_MAX_COUNT && pads[pindex].Pad != nullptr)
+			if (pindex >= 0 && pindex < XUSER_MAX_COUNT && pads[pindex].Pad != nullptr && checkvalidmac(hMac))
 			{			
 					pads[pindex].Utime = time(NULL);
 					vigem_target_x360_update(client, pads[pindex].Pad, *reinterpret_cast<XUSB_REPORT*>(&state->Gamepad));					

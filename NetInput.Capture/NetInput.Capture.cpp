@@ -24,6 +24,7 @@ typedef struct _ASTAT_
 
 #define PAD_SERVER_SIZE 5
 #define PAD_CLIENT_SIZE 24
+#define MAC_SIZE 6
 
 #define PAD_ONLINE 0x00u
 #define PAD_VIBRA 0x01u
@@ -35,9 +36,19 @@ SOCKET sock;
 struct sockaddr_in addr;
 XINPUT_STATE lastSentInputStates[XUSER_MAX_COUNT];
 time_t updatetime[XUSER_MAX_COUNT];
-uint8_t hmac[6];
+uint8_t hmac[MAC_SIZE];
 
-void getMac()
+bool checkvalidmac(uint8_t hMac[])
+{
+	for (int i = 0; i < MAC_SIZE; i++) {
+			if (hMac[i] > 0x00u && hMac[i] < uint8_t(0xFFu))
+				return true;
+		}	
+	return false;
+}
+
+
+bool getMac()
 {
 	ASTAT Adapter;
 	NCB Ncb;
@@ -69,12 +80,15 @@ void getMac()
 
 		if (uRetCode == 0)
 		{
-			for (int j = 0; j < sizeof(hmac); j++) {
+			for (int j = 0; j < MAC_SIZE; j++) {
 				hmac[j] = int(Adapter.adapt.adapter_address[j]);
 			}		
-			break;
+			
+			if (checkvalidmac(hmac)) 
+				return true;
 		}
 	}
+	return false;
 }
 
 
@@ -119,9 +133,9 @@ void CheckControllerMessage()
 
 void SendResetControllers()
 {
-	uint8_t packet[1+sizeof(hmac)];
+	uint8_t packet[1+ MAC_SIZE];
 	packet[0] = (uint8_t)PAD_RESET;
-	memcpy(packet + 1, &hmac, sizeof(hmac));
+	memcpy(packet + 1, &hmac, MAC_SIZE);
 	if (sendto(sock, (const char*)&packet, sizeof(packet), 0, (struct sockaddr*)&addr, sizeof(addr)) != sizeof(packet))
 		printf("Failed to send reset message.\n");
 }
@@ -137,10 +151,10 @@ void PollControllers()
 
 		if (time(NULL) - updatetime[i] >= 5)
 		{
-			uint8_t packet[sizeof(hmac)+2];
+			uint8_t packet[MAC_SIZE+2];
 			packet[0] = (uint8_t)PAD_REG;
 			packet[1] = (uint8_t)i;
-			memcpy(packet + 2, &hmac, sizeof(hmac));		
+			memcpy(packet + 2, &hmac, MAC_SIZE);
 			if (sendto(sock, (const char*)&packet, sizeof(packet), 0, (struct sockaddr*)&addr, sizeof(addr)) != sizeof(packet))
 				printf("Failed to checktimeOut of client controller %u .\n",i);
 			updatetime[i] = time(NULL);
@@ -154,8 +168,8 @@ void PollControllers()
 		packet[0] = (uint8_t)PAD_STATE;
 		packet[1] = (uint8_t)i;
 
-		memcpy(packet + 2, &hmac, sizeof(hmac));	
-		memcpy(packet + sizeof(hmac) + 2, &state, sizeof(XINPUT_STATE));	
+		memcpy(packet + 2, &hmac, MAC_SIZE);
+		memcpy(packet + MAC_SIZE + 2, &state, sizeof(XINPUT_STATE));
 		memcpy(lastSentInputStates + i, &state, sizeof(XINPUT_STATE));
 
 		if (sendto(sock, (const char*)&packet, sizeof(packet), 0, (struct sockaddr*)&addr, sizeof(addr)) != sizeof(packet))
@@ -196,11 +210,15 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
+	if (!getMac()) {
+		printf("Failed to get mac address .\n");
+		return -1;
+	}
+
 	printf("Connected to server %s:%d.\n", ip.c_str(),port);
 
 	CoInitialize(NULL);
 	
-	getMac();
 	printf("Starting networking at %02X:%02X:%02X:%02X:%02X:%02X ...\n",
 		  hmac[0], hmac[1], hmac[2], hmac[3], hmac[4], hmac[5]);
 	
