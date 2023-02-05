@@ -55,11 +55,17 @@ The Player will see if a gamepad with that index is connected. If not, a new vir
 5. 增加客户端手柄的心跳连接每5秒1次，超时15秒自动断开。
 
 
-
 # 1.14 By QeeAI
-
-2023.2.4 
+2023.2.4
 GamePads depended By Client Mac Address and Xbox controller Index Id now.
 
 2023年2月4日
 服务端的手柄分组现在按客户端MAC地址和XBOX手柄序号共同决定。
+
+
+# 1.15 By QeeAI
+2023.2.5
+Added check valid for client mac address.
+
+2023年2月5日
+增加客户端MAC地址的有效性校验。
