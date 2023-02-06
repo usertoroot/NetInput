@@ -36,3 +36,36 @@ The Player will see if a gamepad with that index is connected. If not, a new vir
 ## Requirements
 
 - ViGEmBus https://github.com/ViGEm/ViGEmBus/releases
+
+# Thank  usertoroot 
+# 1.13 By QeeAI
+
+2023.2.2 
+1. Server (Custom Port)      :  netinput.paly.exe 0-65536 (Default 4313)
+2. Client (Custom IPV4/Port) :  netinput.capture.exe 192.168.1.31 (for example) 0-65536 (Default 4313) ,  "target.txt" never use .
+3. Support Xbox360/X1S/XSS Vibration 
+4. GamePads depended By Client IP ，Port, and Local Xbox controller Index Id 。
+5. Added UDP Client HeartBreak every 5s, TimeOut 15s to break.
+
+2023年2月2日
+1. 服务端 (自定义端口)    :  netinput.paly.exe 4313（0-65536）
+2. 客户端 (自定义IP和端口) :  netinput.capture.exe 192.168.1.31（自定义）  4313（0-65536） ， target.txt 不再使用。
+3. 现在可以完美支持Xbox360/X1S/XSS手柄震动。
+4. 服务端的手柄分组现在按IP,端口和本地XBOX手柄序号共同决定。
+5. 增加客户端手柄的心跳连接每5秒1次，超时15秒自动断开。
+
+
+# 1.14 By QeeAI
+2023.2.4
+GamePads depended By Client Mac Address and Xbox controller Index Id now.
+
+2023年2月4日
+服务端的手柄分组现在按客户端MAC地址和XBOX手柄序号共同决定。
+
+
+# 1.15 By QeeAI
+2023.2.5
+Added check valid for client mac address.
+
+2023年2月5日
+增加客户端MAC地址的有效性校验。
